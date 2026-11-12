@@ -15,7 +15,7 @@ esp-idf-sys = { version = "0.38", default-features = false, features = ["std", "
 esp-idf-hal = { version = "0.47", default-features = false, features = ["std", "alloc"] }
 log = "0.4"
 embuild = "0.33"
-esp-afe = { version = "0.1.0", path = "crates/esp-afe" }
+esp-afe = { version = "0.1.1", path = "crates/esp-afe" }
 
 [profile.release]
 opt-level = "s"

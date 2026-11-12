@@ -529,7 +529,7 @@ dependencies = [
 
 [[package]]
 name = "esp-afe"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "esp-idf-sys",
  "log",
@@ -601,7 +601,7 @@ dependencies = [
 
 [[package]]
 name = "esp32-s3-korvo2"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "embuild",

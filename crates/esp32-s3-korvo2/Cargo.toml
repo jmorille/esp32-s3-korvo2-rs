@@ -1,6 +1,6 @@
 [package]
 name = "esp32-s3-korvo2"
-version = "0.1.0"
+version = "0.1.1"
 description = "Board support (BSP) for the Espressif ESP32-S3-Korvo-2 V3.x: ES8311 + ES7210 audio codecs, I2S full duplex with AEC reference, buttons, LEDs"
 readme = "README.md"
 keywords = ["esp32", "korvo", "bsp", "audio", "es8311"]

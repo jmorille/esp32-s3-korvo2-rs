@@ -1,6 +1,6 @@
 [package]
 name = "esp-afe"
-version = "0.1.0"
+version = "0.1.1"
 description = "Safe Rust wrapper for the Espressif ESP-SR audio front-end (AEC, NS, VAD, AGC, WakeNet) on ESP32-S3 with ESP-IDF"
 readme = "README.md"
 keywords = ["esp32", "esp-sr", "audio", "wakeword", "vad"]
