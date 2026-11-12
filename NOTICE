@@ -1,0 +1,45 @@
+esp32-s3-korvo2-rs
+Copyright (c) 2026 The esp32-s3-korvo2-rs contributors
+Licensed under MIT OR Apache-2.0.
+
+This project contains code adapted from the following MIT-licensed projects:
+
+* xiaozhi-esp32 — https://github.com/78/xiaozhi-esp32
+  Copyright (c) 2025 Shenzhen Xinzhi Future Technology Co., Ltd.
+  Copyright (c) 2025 Project Contributors
+  Used for: ESP32-S3-Korvo-2 V3 pin assignment and codec I2S bring-up
+  (main/boards/espressif/esp32-s3-korvo-2-v3.0/config.h and
+  main/audio/codecs/box_audio_codec.cc: I2S0 standard TX + 4-slot TDM RX
+  configuration, ES8311/ES7210 esp_codec_dev setup, TDM slot order
+  MIC1/MIC3/MIC2/MIC4, ADC button ladder voltages).
+  The MIT license text of xiaozhi-esp32 applies to those adapted portions:
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+Third-party components downloaded at build time (not redistributed in this
+repository) keep their own licenses:
+
+* ESP-IDF (Apache-2.0) — https://github.com/espressif/esp-idf
+* espressif/esp-sr (Espressif MIT; prebuilt libraries and models under the
+  Espressif license shipped with the component) — https://github.com/espressif/esp-sr
+* espressif/esp_codec_dev (Apache-2.0) — https://components.espressif.com/components/espressif/esp_codec_dev
+
+Board data (pinout, I/O expander bits, button ladder voltages, ES7210 address,
+AEC reference path) was taken from Espressif's ESP32-S3-Korvo-2 V3.1.2
+schematic and user guide.

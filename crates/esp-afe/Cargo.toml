@@ -1,0 +1,30 @@
+[package]
+name = "esp-afe"
+version = "0.1.0"
+description = "Safe Rust wrapper for the Espressif ESP-SR audio front-end (AEC, NS, VAD, AGC, WakeNet) on ESP32-S3 with ESP-IDF"
+readme = "README.md"
+keywords = ["esp32", "esp-sr", "audio", "wakeword", "vad"]
+categories = ["embedded", "multimedia::audio", "api-bindings"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+log.workspace = true
+
+# The pure-Rust parts (config builder, model name parsing) also build on the host
+# so that `cargo test` can run there; everything touching ESP-SR is espidf-only.
+[target.'cfg(target_os = "espidf")'.dependencies]
+esp-idf-sys.workspace = true
+
+# ESP-SR is pulled from the Espressif component registry by esp-idf-sys and its
+# headers are run through bindgen into `esp_idf_sys::esp_sr`.
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/esp-sr", version = "~2.6.2" }
+bindings_header = "src/bindings.h"
+bindings_module = "esp_sr"
+
+[package.metadata.docs.rs]
+default-target = "xtensa-esp32s3-espidf"

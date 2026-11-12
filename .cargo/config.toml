@@ -1,0 +1,20 @@
+[build]
+target = "xtensa-esp32s3-espidf"
+
+[target.xtensa-esp32s3-espidf]
+linker = "ldproxy"
+runner = "espflash flash --monitor --chip esp32s3 --flash-size 16mb --partition-table partitions.csv"
+rustflags = ["--cfg", "espidf_time64"]
+
+[unstable]
+build-std = ["std", "panic_abort"]
+
+[env]
+MCU = "esp32s3"
+# ESP-IDF version used by esp-idf-sys (downloaded into .embuild/ on first build).
+ESP_IDF_VERSION = "v5.5.2"
+# Paths below are resolved relative to the workspace root.
+ESP_IDF_SDKCONFIG_DEFAULTS = { value = "sdkconfig.defaults", relative = true }
+# Virtual workspace: tell esp-idf-sys which crate is the "root crate" whose
+# metadata (and direct dependencies' extra_components) drive the ESP-IDF build.
+ESP_IDF_SYS_ROOT_CRATE = "korvo2-demos"

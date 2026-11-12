@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = ["crates/esp-afe", "crates/esp32-s3-korvo2", "crates/korvo2-demos"]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jmorille/esp32-s3-korvo2-rs"
+authors = ["jmorille"]
+
+[workspace.dependencies]
+esp-idf-svc = { version = "0.53", default-features = false, features = ["std", "binstart", "alloc"] }
+esp-idf-sys = { version = "0.38", default-features = false, features = ["std", "binstart"] }
+esp-idf-hal = { version = "0.47", default-features = false, features = ["std", "alloc"] }
+log = "0.4"
+embuild = "0.33"
+esp-afe = { version = "0.1.0", path = "crates/esp-afe" }
+
+[profile.release]
+opt-level = "s"
+debug = true
+
+[profile.dev]
+debug = true
+opt-level = "z"
+

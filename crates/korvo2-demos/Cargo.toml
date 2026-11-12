@@ -1,0 +1,29 @@
+[package]
+name = "korvo2-demos"
+version = "0.0.0"
+description = "Networked demos for esp32-s3-korvo2 + esp-afe (not published)"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+esp-idf-svc.workspace = true
+esp-afe.workspace = true
+esp32-s3-korvo2 = { path = "../esp32-s3-korvo2" }
+log.workspace = true
+anyhow = "1"
+
+[build-dependencies]
+embuild.workspace = true
+
+# This crate is the esp-idf-sys "root crate" of the workspace (see
+# .cargo/config.toml). Its extra components are only needed by the networked
+# demos; the codec and ESP-SR components come from the two library crates,
+# which are direct dependencies.
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/mdns", version = "1.8" }
+
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/esp_websocket_client", version = "1.5" }

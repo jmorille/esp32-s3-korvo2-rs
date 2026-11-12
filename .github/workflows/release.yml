@@ -1,0 +1,150 @@
+name: Release
+
+# release-plz keeps a "release PR" up to date (version bumps + CHANGELOG.md).
+# Merging it tags the crates and creates the GitHub Releases. Crates are only
+# published to crates.io when the CARGO_REGISTRY_TOKEN secret exists.
+# Flashable firmware images of the examples are attached to the BSP release.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to (re)build firmware images for
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  # release-plz only reads manifests: use the stable toolchain instead of the
+  # Xtensa "esp" channel pinned in rust-toolchain.toml.
+  RUSTUP_TOOLCHAIN: stable
+
+jobs:
+  release-plz:
+    name: release-plz
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      releases: ${{ steps.release.outputs.releases }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: rustup toolchain install stable --profile minimal
+
+      - name: Disable crates.io publishing when no token is configured
+        env:
+          TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "CARGO_REGISTRY_TOKEN not set: GitHub releases only, no crates.io publish"
+            sed -i 's/^publish = true$/publish = false/' release-plz.toml
+          fi
+
+      - name: Release (tags + GitHub releases, crates.io if token)
+        id: release
+        uses: release-plz/action@v0.5.148
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Open / update the release PR
+        uses: release-plz/action@v0.5.148
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  firmware:
+    name: Firmware images
+    needs: release-plz
+    if: >-
+      always() &&
+      ((github.event_name == 'push' && needs.release-plz.outputs.releases_created == 'true') ||
+       (github.event_name == 'workflow_dispatch' && inputs.tag != ''))
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      RUSTUP_TOOLCHAIN: esp
+    steps:
+      - name: Find the BSP release tag
+        id: tag
+        env:
+          RELEASES: ${{ needs.release-plz.outputs.releases }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            tag="$INPUT_TAG"
+          else
+            tag=$(echo "$RELEASES" | jq -r '[.[] | select(.package_name == "esp32-s3-korvo2")][0].tag // empty')
+            [ -n "$tag" ] || tag=$(echo "$RELEASES" | jq -r '.[0].tag')
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - uses: esp-rs/xtensa-toolchain@v1.7.0
+        with:
+          default: true
+          buildtargets: esp32s3
+          ldproxy: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            .embuild
+            target
+          key: esp32s3-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'sdkconfig.defaults', '.cargo/config.toml', 'components_esp32s3.lock', 'partitions.csv') }}
+          restore-keys: |
+            esp32s3-${{ runner.os }}-
+
+      - name: Build examples
+        run: cargo build --release --workspace --examples
+
+      - name: Install espflash
+        run: |
+          curl -sSfL https://github.com/esp-rs/espflash/releases/download/v4.7.0/espflash-x86_64-unknown-linux-gnu.zip -o espflash.zip
+          unzip -o espflash.zip -d "$HOME/.local/bin" && chmod +x "$HOME/.local/bin/espflash"
+          sudo apt-get install -y --no-install-recommends libudev1 >/dev/null || true
+
+      - name: Merged 16 MB images (bootloader + partitions + app + ESP-SR models)
+        run: |
+          set -euo pipefail
+          out=target/xtensa-esp32s3-espidf/release
+          models=$(ls $out/build/esp-idf-sys-*/out/build/srmodels/srmodels.bin | head -1)
+          mkdir -p dist
+          cp "$models" dist/srmodels.bin
+          for ex in loopback afe_vad wakeword afe_wakeword wifi_stream; do
+            espflash save-image --chip esp32s3 --merge --flash-size 16mb \
+              --partition-table partitions.csv --bootloader $out/bootloader.bin \
+              $out/examples/$ex dist/$ex-merged.bin
+            # overlay the models at the "model" partition offset
+            dd if="$models" of=dist/$ex-merged.bin bs=4096 seek=$((0x610000 / 4096)) conv=notrunc status=none
+            gzip -9 dist/$ex-merged.bin
+          done
+          (cd dist && sha256sum * > SHA256SUMS)
+          ls -l dist
+
+      - name: Upload to the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ steps.tag.outputs.tag }}" dist/* --clobber

@@ -1,0 +1,33 @@
+[package]
+name = "esp32-s3-korvo2"
+version = "0.1.0"
+description = "Board support (BSP) for the Espressif ESP32-S3-Korvo-2 V3.x: ES8311 + ES7210 audio codecs, I2S full duplex with AEC reference, buttons, LEDs"
+readme = "README.md"
+keywords = ["esp32", "korvo", "bsp", "audio", "es8311"]
+categories = ["embedded", "hardware-support", "multimedia::audio"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+esp-idf-sys.workspace = true
+log.workspace = true
+
+[dev-dependencies]
+esp-idf-svc.workspace = true
+esp-afe.workspace = true
+anyhow = "1"
+
+[build-dependencies]
+embuild.workspace = true
+
+# Espressif codec driver (ES8311 / ES7210), bindgen'd into `esp_idf_sys::codec`.
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/esp_codec_dev", version = "~1.6.2" }
+bindings_header = "src/bindings.h"
+bindings_module = "codec"
+
+[package.metadata.docs.rs]
+default-target = "xtensa-esp32s3-espidf"

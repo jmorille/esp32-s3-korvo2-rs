@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check formatting (stable rustfmt)
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt
+          cargo +stable fmt --all -- --check
+
+  build:
+    name: clippy, build, test, doc (xtensa-esp32s3-espidf)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Xtensa Rust toolchain (espup) + ldproxy
+        uses: esp-rs/xtensa-toolchain@v1.7.0
+        with:
+          default: true
+          buildtargets: esp32s3
+          ldproxy: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache cargo, target and ESP-IDF (.embuild)
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            .embuild
+            target
+          key: esp32s3-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'sdkconfig.defaults', '.cargo/config.toml', 'components_esp32s3.lock', 'partitions.csv') }}
+          restore-keys: |
+            esp32s3-${{ runner.os }}-
+
+      - name: Clippy (-D warnings)
+        run: cargo clippy --release --workspace --examples -- -D warnings
+
+      - name: Build all examples (release)
+        run: cargo build --release --workspace --examples
+
+      - name: Unit tests of the pure-Rust parts (host)
+        run: cargo test -p esp-afe --target x86_64-unknown-linux-gnu
+
+      - name: Documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --no-deps -p esp-afe -p esp32-s3-korvo2
+
+      - name: Firmware sizes
+        run: |
+          ls -l target/xtensa-esp32s3-espidf/release/examples/ | grep -vE '\.d$|-[0-9a-f]{16}' || true
+          ls -l target/xtensa-esp32s3-espidf/release/build/esp-idf-sys-*/out/build/srmodels/srmodels.bin
