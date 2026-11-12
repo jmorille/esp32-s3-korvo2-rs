@@ -79,6 +79,8 @@ cargo run --release --example loopback
 | `afe_vad` | AFE with AEC + NS + VADNet; plays a speech-like signal and logs the VAD speech ratio and residual level with AEC on vs off | yes |
 | `wakeword` | Standalone `WakeNet` on the raw MIC1 channel ("Jarvis", else "Hi ESP") | runs, detection not verified |
 | `afe_wakeword` | Wake word through the AFE with AEC while the speaker plays; PLAY / VOL± buttons | runs, detection not verified |
+| `barge_in` | Residual playback after stopping a tone, with and without `SpeakerControl::clear()` | yes |
+| `afe_bench` | CPU load, AFE ring buffer, VAD false positives and wake detections for several AFE / AEC combinations during playback | yes |
 | `wifi_stream` (`-p korvo2-demos`) | Wi-Fi + mDNS + WebSocket full-duplex PCM streaming with RTT stats | compiled only |
 
 ```sh
@@ -93,6 +95,69 @@ speech-like playback gives ≈ 90–100 % "speech" frames with AEC off and **0 %
 with AEC on (FD low-cost mode, NLP very aggressive), residual level −62 dBFS vs
 −49 dBFS without AEC. The first seconds of playback after boot are still detected
 while the AEC filter converges.
+
+### AFE configurations for a full-duplex satellite (`afe_bench`)
+
+AEC on, WakeNet `wn9_jarvis_tts` (aggressive), AFE task on core 0 (priority 5),
+speech-like playback at volume 50, 15 s after a 3 s warm-up, V3.1 board:
+
+| AFE type + AEC mode | VAD | CPU core 0 | ring buffer free (min / avg) | echo flagged as speech |
+|---|---|---|---|---|
+| FD + `FdLowCost`, NLP very aggressive | VADNet | 85 % | 0.98 / 0.99 | **0 %** |
+| FD + `FdHighPerf`, NLP very aggressive | VADNet | 99 % | 0.94 / 0.99 | 8 % |
+| SR + `SrLowCost` | none | 55 % | 0.98 / 0.99 | – |
+| SR + `SrHighPerf` | none | 68 % | 0.98 / 0.99 | – |
+| SR + `SrLowCost` | VADNet | 72 % | 0.98 / 0.99 | 73 % |
+
+No fetch timeout and no ring buffer overflow in any configuration; core 1 stays
+idle (the fetch loop only waits). SR + `SrLowCost` with AEC + VADNet + WakeNet
+**works**, but its AEC leaves enough echo for the VAD to flag ~73 % of playback
+frames as speech, so VAD-based barge-in is unusable with it. **Recommended for a
+full-duplex satellite: `AfeType::FullDuplex` + `AecMode::FdLowCost` +
+`AecNlpLevel::VeryAggressive` + VADNet + WakeNet** (0 % false speech, 15 % CPU
+headroom on core 0; keep other heavy work on core 1). SR + `SrLowCost` without VAD
+is the cheapest option for wake-word-only use.
+
+> **Create the AFE on the main task.** With ESP-SR 2.6.2, `Afe::new` called from
+> a spawned `std::thread` crashed in `afe_create_from_config`
+> ("Unsupported AEC mode for AEC3 path", then `LoadProhibited`) for every
+> configuration, while the same configurations work when created from `main`.
+> Feeding and fetching from other threads is fine. The root cause is inside the
+> closed ESP-SR library and was not found.
+
+## Barge-in: `SpeakerControl::clear()`
+
+`Speaker::write` queues audio in 20 ms chunks; `speaker.control()` returns a
+`Clone + Send` handle whose `clear()` disables the I2S TX channel, preloads its DMA
+buffers with silence (`i2s_channel_preload_data`) and re-enables it, and makes a
+`write` in progress on another thread return after its current chunk. The
+microphones keep running.
+
+Measured with `barge_in` (16 kHz, tone observed on the AEC reference channel):
+
+| Stop method | Audible after stop (avg / max) |
+|---|---|
+| `clear()` | **27 ms / 28 ms** |
+| stop calling `write` only | 119 ms / 120 ms |
+
+Both include up to ~15 ms of RX DMA buffering on the measuring side.
+
+## Sample rate
+
+`Config::sample_rate` accepts 16000 (default), 22050, 24000, 32000 and 48000 Hz.
+The ES8311 (speaker) and ES7210 (mics) share MCLK, BCLK and WS on the board, so
+**playback and capture always run at the same rate**: different TX/RX rates are
+not possible. ESP-SR needs 16 kHz input, therefore:
+
+* 16 kHz (recommended for a voice satellite): resample TTS audio to 16 kHz on the
+  gateway/server; zero CPU cost on the device.
+* 32 / 48 kHz: `Mic::read` low-pass filters and decimates to 16 kHz on the device
+  (`Mic::sample_rate()` returns 16000, `Mic::read_raw` gives the native rate), and
+  the speaker plays the native rate. Use it when playback quality matters.
+  Verified with `KORVO2_SAMPLE_RATE=48000 cargo run --release --example loopback`:
+  real time, 16 kHz mic frames, same tone level on the reference as at 16 kHz.
+* 22.05 / 24 kHz: playback only; `Mic::read` returns native-rate frames that the
+  AFE cannot use.
 
 ## ESP-SR models (WakeNet, VADNet)
 

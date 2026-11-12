@@ -9,6 +9,10 @@
 //!
 //! It also logs the battery voltage at startup and every button press / release.
 //!
+//! Set `KORVO2_SAMPLE_RATE=48000` (or 32000, 24000, 22050) at build time to run
+//! the shared I2S clock at another rate; the microphones are then decimated to
+//! 16 kHz when the rate is 32 or 48 kHz.
+//!
 //! `cargo run --release --example loopback`
 
 #[path = "common/mod.rs"]
@@ -17,7 +21,7 @@ mod common;
 use std::time::{Duration, Instant};
 
 use common::{dbfs, rms, Synth};
-use esp32_s3_korvo2::{Korvo2, Led, Mic};
+use esp32_s3_korvo2::{Config, Korvo2, Led, Mic};
 
 const FRAMES: usize = 256; // 16 ms at 16 kHz
 const PHASE: Duration = Duration::from_secs(4);
@@ -26,7 +30,13 @@ fn main() -> anyhow::Result<()> {
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
 
-    let board = Korvo2::take()?;
+    let rate: u32 = option_env!("KORVO2_SAMPLE_RATE")
+        .and_then(|r| r.parse().ok())
+        .unwrap_or(16_000);
+    let board = Korvo2::take_with(Config {
+        sample_rate: rate,
+        ..Default::default()
+    })?;
     let (mut mic, mut speaker, mut buttons, mut battery, leds) = (
         board.mic,
         board.speaker,
@@ -42,11 +52,14 @@ fn main() -> anyhow::Result<()> {
     );
     log::info!("buttons ladder idle: {} mV", buttons.read_millivolts()?);
     speaker.set_volume(50)?;
-    let rate = mic.sample_rate();
+    let (mic_rate, spk_rate) = (mic.sample_rate(), speaker.sample_rate());
+    log::info!("I2S {rate} Hz: mic frames at {mic_rate} Hz, speaker at {spk_rate} Hz");
+    let ratio = (spk_rate as usize).div_ceil(mic_rate as usize).max(1);
 
     let mut input = vec![0i16; FRAMES * Mic::CHANNELS];
-    let mut output = vec![0i16; FRAMES];
-    let mut synth = Synth::new(rate);
+    // Same duration as the input block at the speaker rate.
+    let mut output = vec![0i16; FRAMES * spk_rate as usize / mic_rate as usize];
+    let mut synth = Synth::new(spk_rate);
     let phases = ["silence", "tone", "loopback"];
     let start = Instant::now();
     let mut acc = [0f32; 3];
@@ -65,8 +78,9 @@ fn main() -> anyhow::Result<()> {
         match phase {
             "tone" => synth.tone(&mut output, 1000.0, 0.3),
             "loopback" => {
-                for (o, f) in output.iter_mut().zip(input.chunks_exact(Mic::CHANNELS)) {
-                    *o = f[0] / 2;
+                // Crude sample-and-hold upsampling when the speaker runs faster.
+                for (i, o) in output.iter_mut().enumerate() {
+                    *o = input[(i / ratio).min(FRAMES - 1) * Mic::CHANNELS] / 2;
                 }
             }
             _ => output.fill(0),

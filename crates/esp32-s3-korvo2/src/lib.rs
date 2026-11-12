@@ -36,15 +36,16 @@
 mod audio;
 pub mod battery;
 mod buttons;
+mod dsp;
 #[allow(unsafe_code)]
 mod ffi;
 mod leds;
 pub mod pins;
 
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
-pub use audio::{Mic, Speaker};
+pub use audio::{Mic, Speaker, SpeakerControl};
 pub use battery::Battery;
 pub use buttons::{Button, ButtonEvent, Buttons};
 pub use leds::{Led, Leds};
@@ -70,6 +71,8 @@ pub enum Error {
     },
     /// A driver object could not be created.
     Init(&'static str),
+    /// Unsupported configuration value.
+    Unsupported(&'static str),
     /// A buffer has the wrong length.
     BadLength {
         /// Required multiple.
@@ -86,6 +89,7 @@ impl core::fmt::Display for Error {
             Self::Esp { code, what } => write!(f, "{what} failed: esp_err {code:#x}"),
             Self::Codec { code, what } => write!(f, "{what} failed: {code}"),
             Self::Init(what) => write!(f, "{what} failed"),
+            Self::Unsupported(what) => write!(f, "unsupported: {what}"),
             Self::BadLength { multiple_of, got } => {
                 write!(f, "buffer length {got} is not a multiple of {multiple_of}")
             }
@@ -98,7 +102,15 @@ impl std::error::Error for Error {}
 /// Board configuration for [`Korvo2::take_with`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
-    /// Sample rate of both directions, in Hz (ESP-SR needs 16000).
+    /// I2S sample rate, in Hz: 16000 (default), 22050, 24000, 32000 or 48000.
+    ///
+    /// The ES8311 and the ES7210 share MCLK, BCLK and WS (same nets on the
+    /// board), so **playback and capture always run at the same rate**. ESP-SR
+    /// needs 16 kHz: at 32 / 48 kHz [`Mic::read`] decimates to 16 kHz on the
+    /// device (FIR, a few % of one core); at 22.05 / 24 kHz the microphone frames
+    /// are *not* usable by the AFE. Recommended for a voice satellite: keep
+    /// 16 kHz and have the server send 16 kHz audio, or use 48 kHz when
+    /// high-quality playback matters.
     pub sample_rate: u32,
     /// Initial speaker volume, 0 ..= 100.
     pub volume: u8,
@@ -128,6 +140,12 @@ impl Default for Config {
 pub(crate) struct Shared {
     pub(crate) audio: ffi::Audio,
     pub(crate) _bus: Arc<ffi::I2cBus>,
+    /// Serialises speaker writes and `clear()`.
+    pub(crate) tx_lock: Mutex<()>,
+    /// Incremented by every `clear()` to abort writes in progress.
+    pub(crate) clear_gen: AtomicU32,
+    pub(crate) volume: AtomicU8,
+    pub(crate) muted: AtomicBool,
 }
 
 /// Expander handle shared by [`Leds`] clones.
@@ -172,6 +190,11 @@ impl Korvo2 {
     }
 
     fn init(config: Config) -> Result<Self, Error> {
+        if ![16_000, 22_050, 24_000, 32_000, 48_000].contains(&config.sample_rate) {
+            return Err(Error::Unsupported(
+                "sample_rate (16000, 22050, 24000, 32000 or 48000)",
+            ));
+        }
         let bus = Arc::new(ffi::I2cBus::new(0)?);
         let leds = Leds::new(&bus);
 
@@ -196,10 +219,17 @@ impl Korvo2 {
         );
 
         let adc = ffi::Adc1::new()?;
-        let shared = Arc::new(Shared { audio, _bus: bus });
+        let shared = Arc::new(Shared {
+            audio,
+            _bus: bus,
+            tx_lock: Mutex::new(()),
+            clear_gen: AtomicU32::new(0),
+            volume: AtomicU8::new(config.volume.min(100)),
+            muted: AtomicBool::new(false),
+        });
         Ok(Self {
             mic: Mic::new(shared.clone(), config.sample_rate),
-            speaker: Speaker::new(shared, config.sample_rate, config.volume.min(100)),
+            speaker: Speaker::new(shared, config.sample_rate),
             buttons: Buttons::new(&adc)?,
             battery: Battery::new(&adc)?,
             leds,

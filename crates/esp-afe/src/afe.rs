@@ -98,6 +98,11 @@ pub struct Afe {
 
 impl Afe {
     /// Create an AFE. `models` is required for WakeNet / VADNet / NSNet.
+    ///
+    /// Call it from the main task: with ESP-SR 2.6.2 on the ESP32-S3, creating
+    /// the AFE from a spawned `std::thread` was observed to crash inside
+    /// `afe_create_from_config`. The feeder / fetcher halves can then be moved
+    /// to other threads.
     pub fn new(config: &AfeConfig, models: Option<&Models>) -> Result<Self, Error> {
         let raw = raw::RawAfe::new(config, models.map(|m| m.inner.clone()))?;
         let info = AfeInfo {

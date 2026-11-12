@@ -411,6 +411,32 @@ impl Audio {
         )
     }
 
+    /// Drop the audio queued in the TX DMA buffers: disable the TX channel,
+    /// pre-load its DMA buffers with silence and re-enable it. RX keeps running.
+    /// Callers serialise this with `write` (see `Shared::tx_lock`).
+    pub(crate) fn clear_tx(&self) -> Result<(), Error> {
+        const ZEROS: [u8; 1024] = [0; 1024];
+        // SAFETY: `tx` is a live, enabled channel; no write is in progress
+        // (caller holds the TX lock); preload is only allowed while disabled.
+        unsafe {
+            esp(sys::i2s_channel_disable(self.tx), "i2s_channel_disable(tx)")?;
+            // Fill every DMA buffer with zeros (preload stops when they are full).
+            for _ in 0..64 {
+                let mut loaded = 0usize;
+                let r = sys::i2s_channel_preload_data(
+                    self.tx,
+                    ZEROS.as_ptr().cast(),
+                    ZEROS.len(),
+                    &mut loaded,
+                );
+                if r != sys::ESP_OK || loaded < ZEROS.len() {
+                    break;
+                }
+            }
+            esp(sys::i2s_channel_enable(self.tx), "i2s_channel_enable(tx)")
+        }
+    }
+
     pub(crate) fn set_out_volume(&self, vol: i32) -> Result<(), Error> {
         // SAFETY: device is live.
         codec_ok(
