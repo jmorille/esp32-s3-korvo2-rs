@@ -3,7 +3,8 @@
 changelog_update = true
 git_release_enable = true
 git_tag_enable = true
-# Set to false by the release workflow when the CARGO_REGISTRY_TOKEN secret is absent.
+# Replaced by `git_only = true` (versions from git tags, no crates.io) by the
+# release workflow when the CARGO_REGISTRY_TOKEN secret is absent.
 publish = true
 # Crates only build for xtensa-esp32s3-espidf: skip `cargo publish` verification.
 publish_no_verify = true

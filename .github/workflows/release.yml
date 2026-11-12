@@ -52,8 +52,8 @@ jobs:
           cfg="$RUNNER_TEMP/release-plz.toml"
           cp release-plz.toml "$cfg"
           if [ -z "$TOKEN" ]; then
-            echo "CARGO_REGISTRY_TOKEN not set: GitHub releases only, no crates.io publish"
-            sed -i 's/^publish = true$/publish = false/' "$cfg"
+            echo "CARGO_REGISTRY_TOKEN not set: git-only mode (versions from tags, GitHub releases, no crates.io)"
+            sed -i 's/^publish = true$/git_only = true/' "$cfg"
           fi
           echo "path=$cfg" >> "$GITHUB_OUTPUT"
 
@@ -71,6 +71,7 @@ jobs:
         uses: release-plz/action@v0.5.148
         with:
           command: release-pr
+          config: ${{ steps.cfg.outputs.path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
